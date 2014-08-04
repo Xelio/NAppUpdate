@@ -6,6 +6,10 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using System.Xml;
+using System.Linq;
+using FeedBuilder.Properties;
+using System.Text.RegularExpressions;
+using SettingsProviderNet;
 
 namespace FeedBuilder
 {
@@ -18,8 +22,8 @@ namespace FeedBuilder
 
 		#region " Private constants/variables"
 
-		private const string DialogFilter = "Feed configuration files (*.config)|*.config|All files (*.*)|*.*";
-		private const string DefaultFileName = "FeedBuilder.config";
+        private const string DialogFilter = "Feed configuration files (*.settings)|*.settings|All files (*.*)|*.*";
+		private const string DefaultFileName = "FeedBuilderSetting.settings";
 		private OpenFileDialog _openDialog;
 
 		#endregion
@@ -28,6 +32,8 @@ namespace FeedBuilder
 
 		#region " Properties"
 
+        protected FeedBuilderSetting FeedSetting { get; set; }
+        protected ISettingsProvider SettingsProvider { get; set; }
 		public string FileName { get; set; }
 		public bool ShowGui { get; set; }
 
@@ -38,7 +44,6 @@ namespace FeedBuilder
 		private void frmMain_Load(Object sender, EventArgs e)
 		{
 			Visible = false;
-            InitializeFormSettings();
 			string[] args = Environment.GetCommandLineArgs();
 			// The first arg is the path to ourself
 			//If args.Count >= 2 Then
@@ -48,44 +53,57 @@ namespace FeedBuilder
 			//        Me.FileName = args(1)
 			//    End If
 			//End If
-
+            ISettingsStorage SettingStorage = new PortableStorage();
 			// The first arg is the path to ourself
 			_argParser = new ArgumentsParser(args);
-			if (!_argParser.HasArgs) return;
-			FileName = _argParser.FileName;
-			if (!string.IsNullOrEmpty(FileName)) {
-				if (File.Exists(FileName)) {
-					FeedBuilderSettingsProvider p = new FeedBuilderSettingsProvider();
-					p.LoadFrom(FileName);
-				} else {
-					_argParser.ShowGui = true;
-					_argParser.Build = false;
-					FileName = _argParser.FileName;
-					UpdateTitle();
-				}
-			}
-			if (_argParser.ShowGui) Show();
-			if (_argParser.Build) Build();
-			if (!_argParser.ShowGui) Close();
+            if (_argParser.HasArgs)
+            {
+                FileName = _argParser.FileName;
+                if (!string.IsNullOrEmpty(FileName))
+                {
+                    if (File.Exists(FileName))
+                    {
+                        SettingStorage = new FileStorage(FileName);
+                    }
+                    else
+                    {
+                        _argParser.ShowGui = true;
+                        _argParser.Build = false;
+                        FileName = _argParser.FileName;
+                        UpdateTitle();
+                    }
+                }
+            }
+
+            SettingsProvider = new SettingsProvider(SettingStorage);
+            FeedSetting = SettingsProvider.GetSettings<FeedBuilderSetting>();
+
+            InitializeFormSettings();
+
+            if (_argParser.HasArgs)
+            {
+                if (_argParser.ShowGui) Show();
+                if (_argParser.Build) Build();
+                if (!_argParser.ShowGui) Close();
+            }
 		}
 
 		private void InitializeFormSettings()
 		{
-			if (!string.IsNullOrEmpty(Settings.Default.OutputFolder) && Directory.Exists(Settings.Default.OutputFolder)) txtOutputFolder.Text = Settings.Default.OutputFolder;
-			if (!string.IsNullOrEmpty(Settings.Default.FeedXML)) txtFeedXML.Text = Settings.Default.FeedXML;
-			if (!string.IsNullOrEmpty(Settings.Default.BaseURL)) txtBaseURL.Text = Settings.Default.BaseURL;
+            if (!string.IsNullOrEmpty(FeedSetting.OutputFolder) && Directory.Exists(FeedSetting.OutputFolder)) txtOutputFolder.Text = FeedSetting.OutputFolder;
+            if (!string.IsNullOrEmpty(FeedSetting.FeedXML)) txtFeedXML.Text = FeedSetting.FeedXML;
+            if (!string.IsNullOrEmpty(FeedSetting.BaseURL)) txtBaseURL.Text = FeedSetting.BaseURL;
 
-			chkVersion.Checked = Settings.Default.CompareVersion;
-			chkSize.Checked = Settings.Default.CompareSize;
-			chkDate.Checked = Settings.Default.CompareDate;
-			chkHash.Checked = Settings.Default.CompareHash;
+            chkVersion.Checked = FeedSetting.CompareVersion;
+            chkSize.Checked = FeedSetting.CompareSize;
+            chkDate.Checked = FeedSetting.CompareDate;
+            chkHash.Checked = FeedSetting.CompareHash;
 
-			chkIgnoreSymbols.Checked = Settings.Default.IgnoreDebugSymbols;
-			chkIgnoreVsHost.Checked = Settings.Default.IgnoreVsHosting;
-			chkCopyFiles.Checked = Settings.Default.CopyFiles;
-			chkCleanUp.Checked = Settings.Default.CleanUp;
+            chkIgnoreSymbols.Checked = FeedSetting.IgnoreDebugSymbols;
+            chkIgnoreVsHost.Checked = FeedSetting.IgnoreVsHosting;
+            chkCopyFiles.Checked = FeedSetting.CopyFiles;
+            chkCleanUp.Checked = FeedSetting.CleanUp;
 
-			if (Settings.Default.IgnoreFiles == null) Settings.Default.IgnoreFiles = new StringCollection();
 			ReadFiles();
 			UpdateTitle();
 		}
@@ -99,32 +117,32 @@ namespace FeedBuilder
 		private void SaveFormSettings()
 		{
 
-			if (!string.IsNullOrEmpty(txtOutputFolder.Text.Trim()) && Directory.Exists(txtOutputFolder.Text.Trim())) Settings.Default.OutputFolder = txtOutputFolder.Text.Trim();
+            if (!string.IsNullOrEmpty(txtOutputFolder.Text.Trim()) && Directory.Exists(txtOutputFolder.Text.Trim())) FeedSetting.OutputFolder = txtOutputFolder.Text.Trim();
 // ReSharper disable AssignNullToNotNullAttribute
-			if (!string.IsNullOrEmpty(txtFeedXML.Text.Trim()) && Directory.Exists(Path.GetDirectoryName(txtFeedXML.Text.Trim()))) Settings.Default.FeedXML = txtFeedXML.Text.Trim();
+            if (!string.IsNullOrEmpty(txtFeedXML.Text.Trim()) && Directory.Exists(Path.GetDirectoryName(txtFeedXML.Text.Trim()))) FeedSetting.FeedXML = txtFeedXML.Text.Trim();
 // ReSharper restore AssignNullToNotNullAttribute
-			if (!string.IsNullOrEmpty(txtBaseURL.Text.Trim())) Settings.Default.BaseURL = txtBaseURL.Text.Trim();
+            if (!string.IsNullOrEmpty(txtBaseURL.Text.Trim())) FeedSetting.BaseURL = txtBaseURL.Text.Trim();
 
-			Settings.Default.CompareVersion = chkVersion.Checked;
-			Settings.Default.CompareSize = chkSize.Checked;
-			Settings.Default.CompareDate = chkDate.Checked;
-			Settings.Default.CompareHash = chkHash.Checked;
+            FeedSetting.CompareVersion = chkVersion.Checked;
+            FeedSetting.CompareSize = chkSize.Checked;
+            FeedSetting.CompareDate = chkDate.Checked;
+            FeedSetting.CompareHash = chkHash.Checked;
 
-			Settings.Default.IgnoreDebugSymbols = chkIgnoreSymbols.Checked;
-			Settings.Default.IgnoreVsHosting = chkIgnoreVsHost.Checked;
-			Settings.Default.CopyFiles = chkCopyFiles.Checked;
-			Settings.Default.CleanUp = chkCleanUp.Checked;
+            FeedSetting.IgnoreDebugSymbols = chkIgnoreSymbols.Checked;
+            FeedSetting.IgnoreVsHosting = chkIgnoreVsHost.Checked;
+            FeedSetting.CopyFiles = chkCopyFiles.Checked;
+            FeedSetting.CleanUp = chkCleanUp.Checked;
 
-			if (Settings.Default.IgnoreFiles==null) Settings.Default.IgnoreFiles = new StringCollection();
-			Settings.Default.IgnoreFiles.Clear();
+            FeedSetting.IncludeFiles.Clear();
 			foreach (ListViewItem thisItem in lstFiles.Items) {
-				if (!thisItem.Checked) Settings.Default.IgnoreFiles.Add(thisItem.Text);
+                if (thisItem.Checked) FeedSetting.IncludeFiles.Add(thisItem.Text);
 			}
 		}
 
 		private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
 		{
-			SaveFormSettings();
+            SaveFormSettings();
+            SettingsProvider.SaveSettings<FeedBuilderSetting>(FeedSetting);
 		}
 
 		#endregion
@@ -142,8 +160,9 @@ namespace FeedBuilder
 		}
 
 		private void btnNew_Click(Object sender, EventArgs e)
-		{
-			Settings.Default.Reset();
+        {
+            SettingsProvider = new SettingsProvider(new PortableStorage());
+            FeedSetting = SettingsProvider.ResetToDefaults<FeedBuilderSetting>();
 			InitializeFormSettings();
 		}
 
@@ -159,9 +178,12 @@ namespace FeedBuilder
 			} else dlg = _openDialog;
 			dlg.Filter = DialogFilter;
 			if (dlg.ShowDialog() != DialogResult.OK) return;
-			FeedBuilderSettingsProvider p = new FeedBuilderSettingsProvider();
-			p.LoadFrom(dlg.FileName);
-			FileName = dlg.FileName;
+
+            FileName = dlg.FileName;
+
+            SettingsProvider = new SettingsProvider(new FileStorage(FileName));
+            FeedSetting = SettingsProvider.GetSettings<FeedBuilderSetting>();
+
 			InitializeFormSettings();
 		}
 
@@ -448,6 +470,16 @@ namespace FeedBuilder
 			string outputDir = txtOutputFolder.Text.Trim();
 			int outputDirLength = txtOutputFolder.Text.Trim().Length;
 
+            //var IgnoreFilter = Settings.Default.IgnoreFiles.Cast<string>().Select<string, Regex>(f =>
+            //{
+            //    string regexString = Regex.Escape(f);
+            //    regexString = "^" + Regex.Replace(regexString, @"\\\*", ".*");
+            //    regexString = Regex.Replace(regexString, @"\\\?", ".");
+            //    regexString += "$";
+            //    Regex regex = new Regex(regexString, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            //    return regex;
+            //});
+            
 			FileSystemEnumerator enumerator = new FileSystemEnumerator(txtOutputFolder.Text.Trim(), "*.*", true);
 			foreach (FileInfo fi in enumerator.Matches()) {
 				string thisFile = fi.FullName;
@@ -458,7 +490,7 @@ namespace FeedBuilder
 				thisItem.SubItems.Add(thisInfo.FileInfo.Length.ToString(CultureInfo.InvariantCulture));
 				thisItem.SubItems.Add(thisInfo.FileInfo.LastWriteTime.ToString(CultureInfo.InvariantCulture));
 				thisItem.SubItems.Add(thisInfo.Hash);
-				thisItem.Checked = (!Settings.Default.IgnoreFiles.Contains(thisInfo.FileInfo.Name));
+                thisItem.Checked = FeedSetting.IncludeFiles.Contains(thisInfo.RelativeName);
 				thisItem.Tag = thisInfo;
 				lstFiles.Items.Add(thisItem);
 			}
@@ -481,15 +513,19 @@ namespace FeedBuilder
 					FileName = DefaultFileName
 				};
 				DialogResult result = dlg.ShowDialog();
-				if (result == DialogResult.OK) {
-					FeedBuilderSettingsProvider p = new FeedBuilderSettingsProvider();
-					p.SaveAs(dlg.FileName);
-					FileName = dlg.FileName;
-				}
-			} else {
-				FeedBuilderSettingsProvider p = new FeedBuilderSettingsProvider();
-				p.SaveAs(FileName);
-			}
+                if (result == DialogResult.OK)
+                {
+                    FileName = dlg.FileName;
+                    SettingsProvider = new SettingsProvider(new FileStorage(FileName));
+                }
+                else
+                {
+                    return;
+                }
+            }
+
+            SettingsProvider.SaveSettings<FeedBuilderSetting>(FeedSetting);
+
 			UpdateTitle();
 		}
 
@@ -499,7 +535,7 @@ namespace FeedBuilder
 		{
 			string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
 			if (files.Length == 0) return;
-			e.Effect = files[0].EndsWith(".config") ? DragDropEffects.Move : DragDropEffects.None;
+            e.Effect = files[0].EndsWith(".settings") ? DragDropEffects.Move : DragDropEffects.None;
 		}
 
 		private void frmMain_DragDrop(object sender, DragEventArgs e)
@@ -507,10 +543,11 @@ namespace FeedBuilder
 			string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
 			if (files.Length == 0) return;
 			try {
-				string fileName = files[0];
-				FeedBuilderSettingsProvider p = new FeedBuilderSettingsProvider();
-				p.LoadFrom(fileName);
-				FileName = fileName;
+                FileName = files[0];
+                
+                SettingsProvider = new SettingsProvider(new FileStorage(FileName));
+                FeedSetting = SettingsProvider.GetSettings<FeedBuilderSetting>();
+
 				InitializeFormSettings();
 			} catch (Exception ex) {
 				MessageBox.Show("The file could not be opened: \n" + ex.Message);

@@ -185,7 +185,7 @@ namespace FeedBuilder
 		public IEnumerable<FileInfo> Matches()
 		{
 			foreach (string rootPath in m_paths) {
-				string path = rootPath.Trim();
+                string path = Path.GetFullPath(rootPath.Trim());
 
 				// we "recurse" into a new directory by jumping to this spot
 				top:
