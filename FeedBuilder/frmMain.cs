@@ -507,7 +507,7 @@ namespace FeedBuilder
 		private void Save(bool forceDialog)
 		{
 			SaveFormSettings();
-			if (forceDialog || string.IsNullOrEmpty(FileName)) {
+			if (forceDialog) {
 				SaveFileDialog dlg = new SaveFileDialog {
 					Filter = DialogFilter,
 					FileName = DefaultFileName
