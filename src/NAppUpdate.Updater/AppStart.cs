@@ -79,6 +79,7 @@ namespace NAppUpdate.Updater
 					} catch (AbandonedMutexException) {
 						// An abandoned mutex is exactly what we are expecting...
 					} finally {
+				        Thread.Sleep(1000); // Let's wait one more second
 						Log("The application has terminated (as expected)");
 					}
 				}
